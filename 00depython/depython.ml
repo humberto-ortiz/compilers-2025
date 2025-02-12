@@ -19,16 +19,16 @@
 type op = Add | Mul
 
 type expr =
-| Constant of int
-| BinOp of expr * op * expr
-| Name of string
+  | Constant of int
+  | BinOp of expr * op * expr
+  | Name of string
 
 type stm =
-| Assign of string * expr
-| Expr of expr
+  | Assign of string * expr
+  | Expr of expr
 
 type program =
-| Module of stm list
+  | Module of stm list
 
 let e1 = BinOp (Constant 1, Add, Constant 3)
 
