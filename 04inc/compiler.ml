@@ -19,8 +19,8 @@ let arg_to_string arg =
 
 let instr_to_string instr =
   match instr with
-  | IMov (dst, src) -> "mov" ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
-  | IAdd (dst, src) -> "add" ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | IMov (dst, src) -> "mov " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | IAdd (dst, src) -> "add " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
 
 let rec asm_to_string (asm : instruction list) : string =
   (* do something to get a string of assembly *)
@@ -31,11 +31,11 @@ let rec asm_to_string (asm : instruction list) : string =
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
    and does not care about the surrounding scaffolding *)
-let compile_expr (e : expr) : instruction list =
+let rec compile_expr (e : expr) : instruction list =
   match e with
   | Constant num -> [ IMov (Reg RAX, Const num) ]
-  | _ -> failwith "to be continued"
-
+  | Increment expr -> compile_expr expr @ [ IAdd (Reg RAX, Const 1L) ]
+ 
 
 (* compile_prog surrounds a compiled program by whatever scaffolding is needed *)
 let compile_prog (e : expr) : string =
