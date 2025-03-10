@@ -18,5 +18,6 @@ prog:
 
 expr:
   | i = INT { Constant i }
+  | id = ID { Id id }
   | LPAREN INCREMENT e = expr RPAREN { Increment e }
   | LPAREN LET LPAREN id = ID e1 = expr RPAREN e2 = expr RPAREN { Let (id, e1, e2) }
