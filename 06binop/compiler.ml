@@ -51,26 +51,27 @@ let add name env : (env * int) =
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
    and does not care about the surrounding scaffolding *)
-let rec compile_expr (e : expr) (env : env) : instruction list =
+let rec compile_expr (e : 'a expr) (env : env) : instruction list =
   match e with
-  | EConstant num -> [ IMov (Reg RAX, Const num) ]
-  | EPrim2 (Plus, expr, EConstant n) -> 
-     compile_expr expr env 
-     @ [ IAdd (Reg RAX, Const n) ]
-  | EId iD -> 
-     let slot = lookup iD env in
-     [ IMov (Reg RAX, RegOffset (RSP, ~-8*slot)) ]
-  | ELet (v, init, body) ->  
+  | ENumber (num, _) -> 
+     [ IMov (Reg RAX, Const num) ]
+  | EId (iD, _) -> let slot = lookup iD env in
+             [ IMov (Reg RAX, RegOffset (RSP, ~-8*slot)) ]
+  | ELet (v, init, body, _) ->  
      let 
        (env', slot) = add v env 
      in
      compile_expr init env @
        [ IMov (RegOffset (RSP, ~-8*slot), Reg RAX) ] @
          compile_expr body env'
-  | _ -> failwith "No se compilar eso"
+  | EPrim2 (Plus, e1, ENumber (n, _), _) ->
+     (* Un marronazo *)
+     compile_expr e1 env
+     @ [ IAdd (Reg RAX, Const n) ]
+  | _ -> failwith "No se compilar eso."
 
 (* compile_prog surrounds a compiled program by whatever scaffolding is needed *)
-let compile_prog (e : expr) : string =
+let compile_prog (e : 'a expr) : string =
   (* compile the program *)
   let instrs = compile_expr e [] in
   (* convert it to a textual form *)
@@ -85,9 +86,9 @@ our_code_starts_here:" in
 
 (* Some OCaml boilerplate for reading files and command-line arguments *)
 let () =
-  let input_file = (open_in (Sys.argv.(1))) in
-  let lexbuf = Lexing.from_channel input_file in
-  let input_program = Parser.prog Lexer.read lexbuf in
-  close_in input_file;
-  let program = (compile_prog input_program) in
-  printf "%s\n" program
+  if 2 = Array.length(Sys.argv) then
+    let input_file = Sys.argv.(1) in
+    let  input_program = Front.parse_file input_file in
+    let program = (compile_prog input_program) in
+    printf "%s\n" program
+

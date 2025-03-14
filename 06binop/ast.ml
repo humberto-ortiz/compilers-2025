@@ -1,18 +1,21 @@
 (* ast.ml - abstract syntax for compiler *)
 
-type binop = Plus | Minus | Times
+type prim2 = 
+  | Plus
+  | Minus
+  | Times
 
-type expr =
-  | EConstant of int64
-  | ELet of string * expr * expr
-  | EId of string
-  | EPrim2 of binop * expr * expr
+type 'a expr =
+  | ENumber of int64 * 'a
+  | EId of string * 'a
+  | EPrim2 of prim2 * 'a expr * 'a expr * 'a
+  | ELet of string * 'a expr * 'a expr * 'a
 
-type immexp =
+type immexpr =
   | ImmNum of int64
   | ImmId of string
 
-type aexpr =
-  | AImm of immexp
-  | APrim2 of binop * immexp * immexp 
-  | ALet of string * aexpr * aexpr 
+type 'a aexpr =
+  | AImm of immexpr * 'a
+  | APrim2 of prim2 * immexpr * immexpr * 'a
+  | ALet of string * 'a aexpr * 'a aexpr * 'a
