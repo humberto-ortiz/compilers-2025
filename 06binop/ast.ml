@@ -15,7 +15,7 @@ type immexpr =
   | ImmNum of int64
   | ImmId of string
 
-type 'a aexpr =
-  | AImm of immexpr * 'a
-  | APrim2 of prim2 * immexpr * immexpr * 'a
-  | ALet of string * 'a aexpr * 'a aexpr * 'a
+type aexpr =
+  | AImm of immexpr
+  | APrim2 of prim2 * immexpr * immexpr
+  | ALet of string * aexpr * aexpr

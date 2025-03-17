@@ -48,6 +48,18 @@ let add name env : (env * int) =
   let slot = 1 + (List.length env) in
   ((name, slot)::env, slot)
 
+(* anf - transform 'a expr to aexpr *)
+let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
+  match e with
+  | ENumber (n, _) -> (expr_with_holes (ImmNum n))
+  | EId (b, _) -> (expr_with_holes (ImmId b))
+  | EPrim2 (Plus, l, r, _) ->
+     anf l (fun limm ->
+       anf r (fun rimm ->
+         ALet ("foo", 
+           APrim2 (Plus, limm, rimm),
+           (expr_with_holes (ImmId "foo")))))
+
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
    and does not care about the surrounding scaffolding *)
