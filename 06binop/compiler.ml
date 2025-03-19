@@ -48,17 +48,34 @@ let add name env : (env * int) =
   let slot = 1 + (List.length env) in
   ((name, slot)::env, slot)
 
+(* tag los expr con numeros unicos *)
+type tag = int
+
+let tag (e : 'a expr) =
+  let rec help e cur =
+    match e with
+    | ENumber (n, _) -> (ENumber (n, cur), (cur + 1))
+    | EId (v, _) -> (EId (v, cur), (cur + 1))
+    | EPrim2 (Plus, left, right, _) ->
+       let (tag_l, next_tag) = help left cur in
+       let (tag_r, next_tag) = help right next_tag in
+       (EPrim2 (Plus, tag_l, tag_r, next_tag), (next_tag + 1))
+  in
+    let (tagged, _) = help e 0 in
+    tagged
+
 (* anf - transform 'a expr to aexpr *)
 let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
   match e with
   | ENumber (n, _) -> (expr_with_holes (ImmNum n))
   | EId (b, _) -> (expr_with_holes (ImmId b))
-  | EPrim2 (Plus, l, r, _) ->
+  | EPrim2 (Plus, l, r, tag) ->
      anf l (fun limm ->
        anf r (fun rimm ->
-         ALet ("foo", 
+           let varname = "foo" ^ (string_of_int tag) in
+         ALet (varname,
            APrim2 (Plus, limm, rimm),
-           (expr_with_holes (ImmId "foo")))))
+           (expr_with_holes (ImmId varname)))))
 
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
