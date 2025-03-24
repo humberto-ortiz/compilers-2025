@@ -51,15 +51,19 @@ let add name env : (env * int) =
 (* tag los expr con numeros unicos *)
 type tag = int
 
-let tag (e : 'a expr) =
+let tag (e : 'a expr) : (tag expr) =
   let rec help e cur =
     match e with
     | ENumber (n, _) -> (ENumber (n, cur), (cur + 1))
     | EId (v, _) -> (EId (v, cur), (cur + 1))
-    | EPrim2 (Plus, left, right, _) ->
+    | EPrim2 (op, left, right, _) ->
        let (tag_l, next_tag) = help left cur in
        let (tag_r, next_tag) = help right next_tag in
-       (EPrim2 (Plus, tag_l, tag_r, next_tag), (next_tag + 1))
+       (EPrim2 (op, tag_l, tag_r, next_tag), (next_tag + 1))
+    | ELet (v, init, body, _) ->
+       let (tag_i, next_tag) = help init cur in
+       let (tag_b, next_tag) = help body next_tag in
+       (ELet (v, tag_i, tag_b, next_tag), (next_tag + 1))
   in
     let (tagged, _) = help e 0 in
     tagged
@@ -69,40 +73,53 @@ let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
   match e with
   | ENumber (n, _) -> (expr_with_holes (ImmNum n))
   | EId (b, _) -> (expr_with_holes (ImmId b))
-  | EPrim2 (Plus, l, r, tag) ->
+  | EPrim2 (op, l, r, tag) ->
      anf l (fun limm ->
        anf r (fun rimm ->
            let varname = "foo" ^ (string_of_int tag) in
          ALet (varname,
-           APrim2 (Plus, limm, rimm),
+           APrim2 (op, limm, rimm),
            (expr_with_holes (ImmId varname)))))
+  | ELet (v, init, body, _) ->
+     (anf init (fun immval ->
+          ALet (v, AImm immval, 
+                (anf body (fun immbody ->
+                     (expr_with_holes immbody))))))
 
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
    and does not care about the surrounding scaffolding *)
-let rec compile_expr (e : 'a expr) (env : env) : instruction list =
+let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
+  let imm_to_arg imm =
+    match imm with
+    | ImmNum n -> Const n
+    | ImmId v -> let slot = lookup v env
+                 in RegOffset (RSP, ~-8*slot)
+  in
   match e with
-  | ENumber (num, _) -> 
-     [ IMov (Reg RAX, Const num) ]
-  | EId (iD, _) -> let slot = lookup iD env in
-             [ IMov (Reg RAX, RegOffset (RSP, ~-8*slot)) ]
-  | ELet (v, init, body, _) ->  
+  | AImm imm -> 
+     [ IMov (Reg RAX, imm_to_arg imm ) ]
+  | ALet (v, init, body) ->  
      let 
        (env', slot) = add v env 
      in
-     compile_expr init env @
+     compile_aexpr init env @
        [ IMov (RegOffset (RSP, ~-8*slot), Reg RAX) ] @
-         compile_expr body env'
-  | EPrim2 (Plus, e1, ENumber (n, _), _) ->
-     (* Un marronazo *)
-     compile_expr e1 env
-     @ [ IAdd (Reg RAX, Const n) ]
+         compile_aexpr body env'
+  | APrim2 (Plus, left, right) ->
+     [ IMov (Reg RAX, imm_to_arg left) ;
+       IAdd (Reg RAX, imm_to_arg right) ]
+
   | _ -> failwith "No se compilar eso."
 
 (* compile_prog surrounds a compiled program by whatever scaffolding is needed *)
 let compile_prog (e : 'a expr) : string =
+  (* tag expr *)
+  let tagged = tag e in
+  (* convert to anf *)
+  let anfed = anf tagged (fun imm -> AImm imm) in
   (* compile the program *)
-  let instrs = compile_expr e [] in
+  let instrs = compile_aexpr anfed [] in
   (* convert it to a textual form *)
   let asm_string = asm_to_string instrs in
   (* surround it with the necessary scaffolding *)
