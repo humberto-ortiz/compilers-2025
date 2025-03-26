@@ -86,6 +86,21 @@ let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
                 (anf body (fun immbody ->
                      (expr_with_holes immbody))))))
 
+let rename (e : tag expr) : tag expr =
+  let rec help (e : tag expr) (env : (string * string) list) : tag expr =
+    match e with
+    | ENumber _ -> e
+    | EId (x, tag) -> EId (lookup x env, tag)
+    | EPrim2 (op, left, right, tag) ->
+       let renamed_left = help left env in
+       let renamed_right = help right env in
+       EPrim2 (op, renamed_left, renamed_right, tag)
+    | ELet (v, init, body, tag) ->
+       let renamed = sprintf "%s#%d" v tag in
+       ELet (renamed, help init env, help body ((v, renamed)::env), tag)
+  in
+  help e []
+
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
    and does not care about the surrounding scaffolding *)
@@ -116,8 +131,10 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
 let compile_prog (e : 'a expr) : string =
   (* tag expr *)
   let tagged = tag e in
+  (* rename the variables *)
+  let renamed = rename tagged in
   (* convert to anf *)
-  let anfed = anf tagged (fun imm -> AImm imm) in
+  let anfed = anf renamed (fun imm -> AImm imm) in
   (* compile the program *)
   let instrs = compile_aexpr anfed [] in
   (* convert it to a textual form *)
