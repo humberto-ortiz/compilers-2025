@@ -13,6 +13,10 @@ type arg =
 type instruction =
   | IMov of arg * arg (* Move the value of the right-side arg into the left-arg *)
   | IAdd of arg * arg
+  | ICmp of arg * arg
+  | IJmp of string
+  | IJnz of string
+  | ILabel of string
 
 let reg_to_string r =
   match r with 
@@ -25,10 +29,14 @@ let arg_to_string arg =
   | Const num -> Int64.to_string num
   | RegOffset (r, o) -> "[" ^ reg_to_string r ^ "+" ^ string_of_int o ^ "]"
 
-let instr_to_string instr =
+let instr_to_string (instr : instruction) : string =
   match instr with
   | IMov (dst, src) -> "mov " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | IAdd (dst, src) -> "add " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | ICmp (dst, src) -> "cmp " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | IJmp label -> "jmp " ^ label ^ "\n"
+  | IJnz label -> "jnz " ^ label ^ "\n"
+  | ILabel label -> label ^ ":\n"
 
 let rec asm_to_string (asm : instruction list) : string =
   (* do something to get a string of assembly *)
@@ -90,15 +98,13 @@ let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
           ALet (v, AImm immval, 
                 (anf body (fun immbody ->
                      (expr_with_holes immbody))))))
-  | _ -> failwith "no se anf eso"
-     (*
-  | EIf0 (cnd, thn, els, tag) ->
+  | EIf0 (cnd, thn, els, _) ->
      (* aun no se hacer esto *)
      anf cnd (fun immcnd ->
-         let varname = sprintf "_if0_%d" tag in
-         ALet (varname,
-               expr_with_holes immcnd,
-      *)
+         AIf0 (immcnd, 
+               anf thn expr_with_holes,
+               anf els expr_with_holes))
+
 let rename (e : tag expr) : tag expr =
   let rec help (e : tag expr) (env : (string * string) list) : tag expr =
     match e with
@@ -111,9 +117,20 @@ let rename (e : tag expr) : tag expr =
     | ELet (v, init, body, tag) ->
        let renamed = sprintf "%s#%d" v tag in
        ELet (renamed, help init env, help body ((v, renamed)::env), tag)
-    | _ -> failwith "no se rename eso"
+    | EIf0 (cnd, thn, els, tag) ->
+       let r_cnd = help cnd env in
+       let r_thn = help thn env in
+       let r_els = help els env in
+       EIf0 (r_cnd, r_thn, r_els, tag)
   in
   help e []
+
+(* marronear para labels unicos *)
+let count = ref 0
+
+let gen_temp base =
+  count := !count + 1;
+  sprintf "temp_%s_%d" base !count
 
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
@@ -138,6 +155,18 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
   | APrim2 (Plus, left, right) ->
      [ IMov (Reg RAX, imm_to_arg left) ;
        IAdd (Reg RAX, imm_to_arg right) ]
+
+  | AIf0 (cnd, thn, els) ->
+     let elselabel = gen_temp "else" in
+     let donelabel = gen_temp "done" in
+     [ IMov (Reg RAX, imm_to_arg cnd) ;
+       ICmp (Reg RAX, Const 0L) ;
+       IJnz elselabel ] @
+       compile_aexpr thn env @
+    [ IJmp donelabel ;
+      ILabel elselabel ] @
+      compile_aexpr els env @
+    [ ILabel donelabel ]
 
   | _ -> failwith "No se compilar eso."
 
