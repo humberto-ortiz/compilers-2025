@@ -4,6 +4,10 @@ open Ast
 type reg =
   | RAX (* the register where we place answers *)
   | RSP (* stack pointer *)
+(*
+  | RDI (* first arg *)
+  | RSI (* second arg *)
+*)
 
 type arg =
   | Const of int64 (* explicit numeric constants *)
@@ -14,14 +18,20 @@ type instruction =
   | IMov of arg * arg (* Move the value of the right-side arg into the left-arg *)
   | IAdd of arg * arg
   | ICmp of arg * arg
+  | IAnd of arg * arg
   | IJmp of string
   | IJnz of string
   | ILabel of string
+(* | ICall of string *)
 
 let reg_to_string r =
   match r with 
   | RAX -> "RAX"
   | RSP -> "RSP"
+(*
+  | RDI -> "RDI"
+  | RSI -> "RSI"
+*)
 
 let arg_to_string arg =
   match arg with
@@ -34,6 +44,7 @@ let instr_to_string (instr : instruction) : string =
   | IMov (dst, src) -> "mov " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | IAdd (dst, src) -> "add " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | ICmp (dst, src) -> "cmp " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | IAnd (dst, src) -> "and " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | IJmp label -> "jmp " ^ label ^ "\n"
   | IJnz label -> "jnz " ^ label ^ "\n"
   | ILabel label -> label ^ ":\n"
@@ -137,6 +148,7 @@ let gen_temp base =
 
 let const_true =  0xFFFFFFFFFFFFFFFFL
 let const_false = 0x7FFFFFFFFFFFFFFFL
+let const_tag =   0x0000000000000001L
 
 (* REFACTORING STARTS HERE *)
 (* compile_expr is responsible for compiling just a single expression,
@@ -162,6 +174,12 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
          compile_aexpr body env'
   | APrim2 (Plus, left, right) ->
      [ IMov (Reg RAX, imm_to_arg left) ;
+       IAnd (Reg RAX, Const const_tag) ;
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg right) ;
+       IAnd (Reg RAX, Const const_tag);
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg left) ;
        IAdd (Reg RAX, imm_to_arg right) ]
 
   | AIfdvd (cnd, thn, els) ->
@@ -193,9 +211,20 @@ let compile_prog (e : 'a expr) : string =
   (* surround it with the necessary scaffolding *)
   let prelude = "
 section .text
+extern our_error
 global our_code_starts_here
-our_code_starts_here:" in
-  let suffix = "ret" in
+err_not_number:
+	mov rdi, 1
+	mov rsi, rax
+	call our_error
+
+our_code_starts_here:
+	push RBP
+	mov RBP, RSP
+" in
+  let suffix = "	mov RSP, RBP
+	pop RBP
+	ret" in
   prelude ^ "\n" ^ asm_string ^ "\n" ^ suffix
 
 (* Some OCaml boilerplate for reading files and command-line arguments *)
