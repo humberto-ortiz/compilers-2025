@@ -18,7 +18,7 @@ type instruction =
   | IMov of arg * arg (* Move the value of the right-side arg into the left-arg *)
   | IAdd of arg * arg
   | ICmp of arg * arg
-  | IAnd of arg * arg
+  | ITst of arg * arg
   | IJmp of string
   | IJnz of string
   | ILabel of string
@@ -44,7 +44,7 @@ let instr_to_string (instr : instruction) : string =
   | IMov (dst, src) -> "mov " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | IAdd (dst, src) -> "add " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | ICmp (dst, src) -> "cmp " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
-  | IAnd (dst, src) -> "and " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | ITst (dst, src) -> "test " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | IJmp label -> "jmp " ^ label ^ "\n"
   | IJnz label -> "jnz " ^ label ^ "\n"
   | ILabel label -> label ^ ":\n"
@@ -174,10 +174,10 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
          compile_aexpr body env'
   | APrim2 (Plus, left, right) ->
      [ IMov (Reg RAX, imm_to_arg left) ;
-       IAnd (Reg RAX, Const const_tag) ;
+       ITst (Reg RAX, Const const_tag) ;
        IJnz "err_not_number" ;
        IMov (Reg RAX, imm_to_arg right) ;
-       IAnd (Reg RAX, Const const_tag);
+       ITst (Reg RAX, Const const_tag);
        IJnz "err_not_number" ;
        IMov (Reg RAX, imm_to_arg left) ;
        IAdd (Reg RAX, imm_to_arg right) ]
