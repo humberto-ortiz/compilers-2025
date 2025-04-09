@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 typedef uint64_t SNAKEVAL;
 
@@ -20,6 +21,15 @@ SNAKEVAL print(SNAKEVAL val) {
     printf("Unknown value: %#018lx", val); // print unknown val in hex
   }
   return val;
+}
+
+void our_error(uint64_t err, SNAKEVAL val) {
+  if (err == 1) {
+    printf ("Expected an integer, got ");
+    print (val);
+    printf("\n");
+  }
+  exit(err);
 }
 
 int main(int argc, char** argv) {
