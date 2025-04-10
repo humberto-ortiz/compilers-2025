@@ -27,3 +27,6 @@ rm if-roto.o if-roto.s
 $ ./if-roto.run
 If expected a Boolean, got 0
 ```
+
+**HINT** probablemente quieren hacer un `err_not_boolean` y brincar
+  alli si detectan un error.
