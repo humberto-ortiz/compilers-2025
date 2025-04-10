@@ -27,6 +27,7 @@ rule read =
      | "if" { IFDVD }
      | "true" { TRUE }
      | "false" { FALSE }
+     | "print" { PRINT }
      | eof { EOF }
      | identifier { ID (Lexing.lexeme lexbuf) }
      | _ { raise (SyntaxError ("No se que es eso: " ^ (Lexing.lexeme lexbuf))) }

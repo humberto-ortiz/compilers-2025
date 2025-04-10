@@ -4,8 +4,8 @@ open Ast
 type reg =
   | RAX (* the register where we place answers *)
   | RSP (* stack pointer *)
-(*
   | RDI (* first arg *)
+(*
   | RSI (* second arg *)
 *)
 
@@ -22,14 +22,14 @@ type instruction =
   | IJmp of string
   | IJnz of string
   | ILabel of string
-(* | ICall of string *)
+  | ICall of string
 
 let reg_to_string r =
   match r with 
   | RAX -> "RAX"
   | RSP -> "RSP"
-(*
   | RDI -> "RDI"
+(*
   | RSI -> "RSI"
 *)
 
@@ -48,6 +48,7 @@ let instr_to_string (instr : instruction) : string =
   | IJmp label -> "jmp " ^ label ^ "\n"
   | IJnz label -> "jnz " ^ label ^ "\n"
   | ILabel label -> label ^ ":\n"
+  | ICall label -> "call " ^ label ^ "\n"
 
 let rec asm_to_string (asm : instruction list) : string =
   (* do something to get a string of assembly *)
@@ -76,6 +77,9 @@ let tag (e : 'a expr) : (tag expr) =
     | ENumber (n, _) -> (ENumber (n, cur), (cur + 1))
     | EBool (b, _) -> (EBool (b, cur), (cur + 1))
     | EId (v, _) -> (EId (v, cur), (cur + 1))
+    | EPrim1 (op, e, _) -> 
+       let (tag_e, next_tag) = help e cur in
+       (EPrim1 (op, tag_e, next_tag), (next_tag + 1))
     | EPrim2 (op, left, right, _) ->
        let (tag_l, next_tag) = help left cur in
        let (tag_r, next_tag) = help right next_tag in
@@ -99,6 +103,12 @@ let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
   | ENumber (n, _) -> (expr_with_holes (ImmNum n))
   | EBool (b, _) -> (expr_with_holes (ImmBool b))
   | EId (b, _) -> (expr_with_holes (ImmId b))
+  | EPrim1 (op, e, tag) ->
+     anf e (fun eimm ->
+         let varname = "bar" ^ (string_of_int tag) in
+         ALet (varname,
+               APrim1 (op, eimm),
+               (expr_with_holes (ImmId varname))))
   | EPrim2 (op, l, r, tag) ->
      anf l (fun limm ->
        anf r (fun rimm ->
@@ -124,6 +134,9 @@ let rename (e : tag expr) : tag expr =
     | ENumber _ -> e
     | EBool _ -> e
     | EId (x, tag) -> EId (lookup x env, tag)
+    | EPrim1 (op, left, tag) ->
+       let renamed_left = help left env in
+       EPrim1 (op, renamed_left, tag)
     | EPrim2 (op, left, right, tag) ->
        let renamed_left = help left env in
        let renamed_right = help right env in
@@ -172,6 +185,9 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
      compile_aexpr init env @
        [ IMov (RegOffset (RSP, ~-8*slot), Reg RAX) ] @
          compile_aexpr body env'
+  | APrim1 (Print, imm) ->
+     [ IMov (Reg RDI, imm_to_arg imm) ;
+       ICall "print" ]
   | APrim2 (Plus, left, right) ->
      [ IMov (Reg RAX, imm_to_arg left) ;
        ITst (Reg RAX, Const const_tag) ;
@@ -212,6 +228,8 @@ let compile_prog (e : 'a expr) : string =
   let prelude = "
 section .text
 extern our_error
+extern print
+
 global our_code_starts_here
 err_not_number:
 	mov rdi, 1

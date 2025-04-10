@@ -14,6 +14,7 @@
 %token IFDVD
 %token TRUE
 %token FALSE
+%token PRINT
 
 %start <'a Ast.expr> prog
 %%
@@ -32,3 +33,5 @@ expr:
     { EIfdvd (cnd, thn, els, $startpos) }
   | FALSE { EBool (false, $startpos) }
   | TRUE { EBool (true, $startpos) }
+  | LPAREN PRINT e1 = expr RPAREN
+    { EPrim1 (Print, e1, $startpos) }
