@@ -71,31 +71,51 @@ let add name env : (env * int) =
 (* tag los expr con numeros unicos *)
 type tag = int
 
-let tag (e : 'a expr) : (tag expr) =
-  let rec help e cur =
+let tag_program (p : 'a program) : (tag program) =
+  let rec tag_expr e cur =
     match e with
     | ENumber (n, _) -> (ENumber (n, cur), (cur + 1))
     | EBool (b, _) -> (EBool (b, cur), (cur + 1))
     | EId (v, _) -> (EId (v, cur), (cur + 1))
     | EPrim1 (op, e, _) -> 
-       let (tag_e, next_tag) = help e cur in
+       let (tag_e, next_tag) = tag_expr e cur in
        (EPrim1 (op, tag_e, next_tag), (next_tag + 1))
     | EPrim2 (op, left, right, _) ->
-       let (tag_l, next_tag) = help left cur in
-       let (tag_r, next_tag) = help right next_tag in
+       let (tag_l, next_tag) = tag_expr left cur in
+       let (tag_r, next_tag) = tag_expr right next_tag in
        (EPrim2 (op, tag_l, tag_r, next_tag), (next_tag + 1))
     | ELet (v, init, body, _) ->
-       let (tag_i, next_tag) = help init cur in
-       let (tag_b, next_tag) = help body next_tag in
+       let (tag_i, next_tag) = tag_expr init cur in
+       let (tag_b, next_tag) = tag_expr body next_tag in
        (ELet (v, tag_i, tag_b, next_tag), (next_tag + 1))
     | EIfdvd (cnd, thn, els, _) ->
-       let (tag_cnd, next_tag) = help cnd cur in
-       let (tag_thn, next_tag) = help thn next_tag in
-       let (tag_els, next_tag) = help els next_tag in
+       let (tag_cnd, next_tag) = tag_expr cnd cur in
+       let (tag_thn, next_tag) = tag_expr thn next_tag in
+       let (tag_els, next_tag) = tag_expr els next_tag in
        (EIfdvd (tag_cnd, tag_thn, tag_els, next_tag), (next_tag + 1))
+    | EApp (f, x, _) -> 
+       let (tag_x, next_tag) = tag_expr x cur in
+       (EApp (f, tag_x, next_tag), (next_tag + 1))
+    and tag_def def cur = 
+      match def with
+      | DFun (f, a, body, _) ->
+         let (tagged_body, next_tag) = tag_expr body cur in
+         (DFun (f, a, tagged_body, next_tag), (next_tag + 1))
   in
-    let (tagged, _) = help e 0 in
-    tagged
+  match p with
+  | Prog (ds, e) -> 
+     let rec help (ds, cur) =
+       match ds with
+       | [] -> ([], cur)
+       | d :: ds -> 
+          let next_tag = cur + 1 in
+          let (tagged_d, next_tag) = tag_def d next_tag in
+          let (tagged_ds, next_tag) = help (ds, next_tag) in
+          (tagged_d :: tagged_ds, next_tag)
+     in
+     let (tagged_ds, next_tag) = help (ds, 1) in
+     let (tagged_e, _) = tag_expr e next_tag in
+     Prog (tagged_ds, tagged_e)
 
 (* anf - transform 'a expr to aexpr *)
 let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
@@ -127,6 +147,9 @@ let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
          AIfdvd (immcnd, 
                anf thn expr_with_holes,
                anf els expr_with_holes))
+  | EApp (f, e, _) ->
+     (anf e (fun immval ->
+          AApp (f, immval)))
 
 let rename (e : tag expr) : tag expr =
   let rec help (e : tag expr) (env : (string * string) list) : tag expr =
@@ -149,6 +172,9 @@ let rename (e : tag expr) : tag expr =
        let r_thn = help thn env in
        let r_els = help els env in
        EIfdvd (r_cnd, r_thn, r_els, tag)
+    | EApp (f, e, tag) ->
+       let renamed = help e env in
+       EApp (f, renamed, tag)
   in
   help e []
 
@@ -210,12 +236,16 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
       compile_aexpr els env @
     [ ILabel donelabel ]
 
+  | AApp (f, x) ->
+     [ IMov (Reg RDI, imm_to_arg x) ;
+       ICall f ]
   | _ -> failwith "No se compilar eso."
 
+
 (* compile_prog surrounds a compiled program by whatever scaffolding is needed *)
-let compile_prog (e : 'a expr) : string =
+let compile_prog (p : 'a program) : string =
   (* tag expr *)
-  let tagged = tag e in
+  let tagged = tag_program p in
   (* rename the variables *)
   let renamed = rename tagged in
   (* convert to anf *)

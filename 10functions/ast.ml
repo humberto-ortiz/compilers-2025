@@ -16,6 +16,13 @@ type 'a expr =
   | EPrim2 of prim2 * 'a expr * 'a expr * 'a
   | ELet of string * 'a expr * 'a expr * 'a
   | EIfdvd of 'a expr * 'a expr * 'a expr * 'a
+  | EApp of string * 'a expr * 'a
+
+type 'a decl =
+  | DFun of string * string * 'a expr * 'a
+
+type 'a program =
+   | Prog of 'a decl list * 'a expr 
 
 type immexpr =
   | ImmNum of int64
@@ -28,3 +35,10 @@ type aexpr =
   | APrim2 of prim2 * immexpr * immexpr
   | ALet of string * aexpr * aexpr
   | AIfdvd of immexpr * aexpr * aexpr
+  | AApp of string * immexpr
+
+type adecl =
+  | ADFun of string * string * aexpr
+
+type aprogram =
+  | AProg of adecl list * aexpr

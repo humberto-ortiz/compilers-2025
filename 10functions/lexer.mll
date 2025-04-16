@@ -28,6 +28,7 @@ rule read =
      | "true" { TRUE }
      | "false" { FALSE }
      | "print" { PRINT }
+     | "def" { DEF }
      | eof { EOF }
      | identifier { ID (Lexing.lexeme lexbuf) }
      | _ { raise (SyntaxError ("No se que es eso: " ^ (Lexing.lexeme lexbuf))) }

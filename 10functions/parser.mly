@@ -15,12 +15,22 @@
 %token TRUE
 %token FALSE
 %token PRINT
+%token DEF
 
-%start <'a Ast.expr> prog
+%start <'a Ast.program> prog
 %%
 
 prog:
-  | e = expr EOF { e }
+  | e = expr EOF { Prog ([], e) }
+  | ds = defs e = expr EOF { Ast.Prog (ds, e) }
+
+defs:
+  | d = def { [d] }
+  | d = def ds = defs { d :: ds }
+
+def:
+ | LPAREN DEF LPAREN f = ID x = ID RPAREN body = expr RPAREN
+    { DFun (f, x, body, $startpos) }
 
 expr:
   | i = INT { ENumber (i, $startpos) }
@@ -35,3 +45,5 @@ expr:
   | TRUE { EBool (true, $startpos) }
   | LPAREN PRINT e1 = expr RPAREN
     { EPrim1 (Print, e1, $startpos) }
+  | LPAREN f = ID e1 = expr RPAREN
+    { EApp (f, e1, $startpos) }
