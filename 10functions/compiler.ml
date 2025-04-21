@@ -5,6 +5,7 @@ type reg =
   | RAX (* the register where we place answers *)
   | RSP (* stack pointer *)
   | RDI (* first arg *)
+  | RBP (* base pointer *)
 (*
   | RSI (* second arg *)
 *)
@@ -19,16 +20,20 @@ type instruction =
   | IAdd of arg * arg
   | ICmp of arg * arg
   | ITst of arg * arg
+  | IPush of arg
+  | IPop of arg
   | IJmp of string
   | IJnz of string
   | ILabel of string
   | ICall of string
+  | IRet
 
 let reg_to_string r =
   match r with 
   | RAX -> "RAX"
   | RSP -> "RSP"
   | RDI -> "RDI"
+  | RBP -> "RBP"
 (*
   | RSI -> "RSI"
 *)
@@ -45,10 +50,13 @@ let instr_to_string (instr : instruction) : string =
   | IAdd (dst, src) -> "add " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | ICmp (dst, src) -> "cmp " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | ITst (dst, src) -> "test " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | IPush (dst) -> "push " ^ arg_to_string dst ^ "\n"
+  | IPop (dst) -> "pop " ^ arg_to_string dst ^ "\n"
   | IJmp label -> "jmp " ^ label ^ "\n"
   | IJnz label -> "jnz " ^ label ^ "\n"
   | ILabel label -> label ^ ":\n"
   | ICall label -> "call " ^ label ^ "\n"
+  | IRet -> "ret\n"
 
 let rec asm_to_string (asm : instruction list) : string =
   (* do something to get a string of assembly *)
@@ -147,9 +155,22 @@ let rec anf (e : 'a expr) (expr_with_holes : (immexpr -> aexpr)) : aexpr =
          AIfdvd (immcnd, 
                anf thn expr_with_holes,
                anf els expr_with_holes))
-  | EApp (f, e, _) ->
+  | EApp (f, e, tag) ->
      (anf e (fun immval ->
-          AApp (f, immval)))
+          let varname = "_app" ^ (string_of_int tag) in
+          ALet (varname,
+                AApp (f, immval),
+                (expr_with_holes (ImmId varname)))))
+
+let anf_prog p expr_with_holes =
+  let help dec =
+    match dec with
+    | DFun (f, x, body, _) ->
+       ADFun (f, x, anf body expr_with_holes)
+  in
+  match p with
+  | Prog (ds, e) ->
+     AProg (List.map help ds, anf e expr_with_holes)
 
 let rename (e : tag expr) : tag expr =
   let rec help (e : tag expr) (env : (string * string) list) : tag expr =
@@ -177,6 +198,15 @@ let rename (e : tag expr) : tag expr =
        EApp (f, renamed, tag)
   in
   help e []
+
+let rename_prog p = 
+  let help dec =
+    match dec with
+    | DFun (f, x, body, tag) ->
+       DFun(f, x, rename body, tag)
+  in
+  match p with
+  | Prog (ds, e) -> Prog (List.map help ds, rename e)
 
 (* marronear para labels unicos *)
 let count = ref 0
@@ -247,11 +277,28 @@ let compile_prog (p : 'a program) : string =
   (* tag expr *)
   let tagged = tag_program p in
   (* rename the variables *)
-  let renamed = rename tagged in
+  let renamed = rename_prog tagged in
   (* convert to anf *)
-  let anfed = anf renamed (fun imm -> AImm imm) in
+  let anfed = anf_prog renamed (fun imm -> AImm imm) in
   (* compile the program *)
-  let instrs = compile_aexpr anfed [] in
+  let compile_dec dec env =
+    match dec with
+    | ADFun (f, x, body) ->
+       let (env', slot) = add x env in
+ 
+       [ ILabel f ;
+         IPush (Reg RBP) ;
+         IMov (Reg RBP, Reg RSP) ;
+         IMov (RegOffset (RSP, ~-8*slot), Reg RDI) ] @
+         compile_aexpr body env' @
+           [ IMov (Reg RSP, Reg RBP) ;
+             IPop (Reg RBP);
+             IRet ]
+
+  match anfed with
+  | AProg (ds, a) ->
+     
+  let instrs = compile_aexpr a [] in
   (* convert it to a textual form *)
   let asm_string = asm_to_string instrs in
   (* surround it with the necessary scaffolding *)
