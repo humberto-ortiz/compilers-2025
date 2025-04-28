@@ -203,7 +203,7 @@ let rename_prog p =
   let help dec =
     match dec with
     | DFun (f, x, body, tag) ->
-       DFun(f, x, rename body, tag)
+       DFun(f, x, body, tag)
   in
   match p with
   | Prog (ds, e) -> Prog (List.map help ds, rename e)
@@ -294,10 +294,11 @@ let compile_prog (p : 'a program) : string =
            [ IMov (Reg RSP, Reg RBP) ;
              IPop (Reg RBP);
              IRet ]
-
+in
   match anfed with
   | AProg (ds, a) ->
-     
+    let def_instr = List.flatten (List.map (fun d -> compile_dec d []) ds ) in
+    let def_asm = asm_to_string def_instr in
   let instrs = compile_aexpr a [] in
   (* convert it to a textual form *)
   let asm_string = asm_to_string instrs in
@@ -312,6 +313,8 @@ err_not_number:
 	mov rdi, 1
 	mov rsi, rax
 	call our_error
+
+" ^ def_asm ^ "
 
 our_code_starts_here:
 	push RBP

@@ -22,11 +22,11 @@
 
 prog:
   | e = expr EOF { Prog ([], e) }
-  | ds = defs e = expr EOF { Ast.Prog (ds, e) }
+  | ds = defs e = expr { Ast.Prog (ds, e) }
 
 defs:
   | d = def { [d] }
-  | d = def ds = defs { d :: ds }
+  | ds = defs d = def { ds @ [d] }
 
 def:
  | LPAREN DEF LPAREN f = ID x = ID RPAREN body = expr RPAREN
