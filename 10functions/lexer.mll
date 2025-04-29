@@ -23,6 +23,7 @@ rule read =
      | '+' { PLUS }
      | '-' { MINUS }
      | '*' { TIMES }
+     | '<' { LESS }
      | "let" { LET }
      | "if" { IFDVD }
      | "true" { TRUE }

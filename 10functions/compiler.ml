@@ -18,12 +18,16 @@ type arg =
 type instruction =
   | IMov of arg * arg (* Move the value of the right-side arg into the left-arg *)
   | IAdd of arg * arg
+  | ISub of arg * arg
+  | IImul of arg * arg
+  | ISar of arg * arg
   | ICmp of arg * arg
   | ITst of arg * arg
   | IPush of arg
   | IPop of arg
   | IJmp of string
   | IJnz of string
+  | IJl of string
   | ILabel of string
   | ICall of string
   | IRet
@@ -48,12 +52,16 @@ let instr_to_string (instr : instruction) : string =
   match instr with
   | IMov (dst, src) -> "mov " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | IAdd (dst, src) -> "add " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | ISub (dst, src) -> "sub " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | IImul (dst, src) -> "imul " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
+  | ISar (dst, src) -> "sar " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | ICmp (dst, src) -> "cmp " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | ITst (dst, src) -> "test " ^ arg_to_string dst ^ ", " ^ arg_to_string src ^ "\n"
   | IPush (dst) -> "push " ^ arg_to_string dst ^ "\n"
   | IPop (dst) -> "pop " ^ arg_to_string dst ^ "\n"
   | IJmp label -> "jmp " ^ label ^ "\n"
   | IJnz label -> "jnz " ^ label ^ "\n"
+  | IJl label -> "jl " ^ label ^ "\n"
   | ILabel label -> label ^ ":\n"
   | ICall label -> "call " ^ label ^ "\n"
   | IRet -> "ret\n"
@@ -229,7 +237,7 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
     | ImmBool true -> Const const_true
     | ImmBool false -> Const const_false
     | ImmId v -> let slot = lookup v env
-                 in RegOffset (RSP, ~-8*slot)
+                 in RegOffset (RBP, ~-8*slot)
   in
   match e with
   | AImm imm -> 
@@ -239,7 +247,7 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
        (env', slot) = add v env 
      in
      compile_aexpr init env @
-       [ IMov (RegOffset (RSP, ~-8*slot), Reg RAX) ] @
+       [ IMov (RegOffset (RBP, ~-8*slot), Reg RAX) ] @
          compile_aexpr body env'
   | APrim1 (Print, imm) ->
      [ IMov (Reg RDI, imm_to_arg imm) ;
@@ -253,12 +261,48 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
        IJnz "err_not_number" ;
        IMov (Reg RAX, imm_to_arg left) ;
        IAdd (Reg RAX, imm_to_arg right) ]
+  | APrim2 (Minus, left, right) ->
+     [ IMov (Reg RAX, imm_to_arg left) ;
+       ITst (Reg RAX, Const const_tag) ;
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg right) ;
+       ITst (Reg RAX, Const const_tag);
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg left) ;
+       ISub (Reg RAX, imm_to_arg right) ]
+  | APrim2 (Times, left, right) ->
+     [ IMov (Reg RAX, imm_to_arg left) ;
+       ITst (Reg RAX, Const const_tag) ;
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg right) ;
+       ITst (Reg RAX, Const const_tag);
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg left) ;
+       IImul (Reg RAX, imm_to_arg right) ;
+       ISar (Reg RAX, Const 1L)
+     ]
+  | APrim2 (Less, left, right) ->
+     [ IMov (Reg RAX, imm_to_arg left) ;
+       ITst (Reg RAX, Const const_tag) ;
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg right) ;
+       ITst (Reg RAX, Const const_tag);
+       IJnz "err_not_number" ;
+       IMov (Reg RAX, imm_to_arg left) ;
+       ICmp (Reg RAX, imm_to_arg right) ;
+       IJl "less" ;
+       IMov (Reg RAX, Const const_false) ;
+       IJmp "done" ;
+       ILabel "less" ;
+       IMov (Reg RAX, Const const_true) ;
+       ILabel "done"
+     ]
 
   | AIfdvd (cnd, thn, els) ->
      let elselabel = gen_temp "else" in
      let donelabel = gen_temp "done" in
      [ IMov (Reg RAX, imm_to_arg cnd) ;
-       ICmp (Reg RAX, Const 0L) ;
+       ICmp (Reg RAX, Const const_true) ;
        IJnz elselabel ] @
        compile_aexpr thn env @
     [ IJmp donelabel ;
@@ -269,8 +313,13 @@ let rec compile_aexpr (e : aexpr) (env : env) : instruction list =
   | AApp (f, x) ->
      [ IMov (Reg RDI, imm_to_arg x) ;
        ICall f ]
-  | _ -> failwith "No se compilar eso."
+(*  | _ -> failwith "No se compilar eso." *)
 
+let rec depth (e : aexpr) : int =
+  match e with
+  | ALet (_, init, body) -> 1 + Int.max (depth init) (depth body)
+  | AIfdvd (_, t, e) -> Int.max (depth t) (depth e)
+  | _ -> 0
 
 (* compile_prog surrounds a compiled program by whatever scaffolding is needed *)
 let compile_prog (p : 'a program) : string =
@@ -289,7 +338,8 @@ let compile_prog (p : 'a program) : string =
        [ ILabel f ;
          IPush (Reg RBP) ;
          IMov (Reg RBP, Reg RSP) ;
-         IMov (RegOffset (RSP, ~-8*slot), Reg RDI) ] @
+         ISub (Reg RSP, Const 8L) ;
+         IMov (RegOffset (RBP, ~-8*slot), Reg RDI) ] @
          compile_aexpr body env' @
            [ IMov (Reg RSP, Reg RBP) ;
              IPop (Reg RBP);
@@ -300,10 +350,11 @@ in
     let def_instr = List.flatten (List.map (fun d -> compile_dec d []) ds ) in
     let def_asm = asm_to_string def_instr in
   let instrs = compile_aexpr a [] in
+  let stack_depth = depth a in
   (* convert it to a textual form *)
   let asm_string = asm_to_string instrs in
   (* surround it with the necessary scaffolding *)
-  let prelude = "
+  sprintf "
 section .text
 extern our_error
 extern print
@@ -314,16 +365,16 @@ err_not_number:
 	mov rsi, rax
 	call our_error
 
-" ^ def_asm ^ "
+%s
 
 our_code_starts_here:
 	push RBP
 	mov RBP, RSP
-" in
-  let suffix = "	mov RSP, RBP
+        add RSP, -8*%d
+%s
+	mov RSP, RBP
 	pop RBP
-	ret" in
-  prelude ^ "\n" ^ asm_string ^ "\n" ^ suffix
+	ret" def_asm stack_depth asm_string
 
 (* Some OCaml boilerplate for reading files and command-line arguments *)
 let () =

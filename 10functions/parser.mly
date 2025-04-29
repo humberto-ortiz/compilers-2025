@@ -11,6 +11,7 @@
 %token PLUS
 %token MINUS
 %token TIMES
+%token LESS
 %token IFDVD
 %token TRUE
 %token FALSE
@@ -39,6 +40,12 @@ expr:
     { ELet (id, e1, e2, $startpos) }
   | LPAREN PLUS e1 = expr e2 = expr RPAREN 
     { EPrim2 (Plus, e1, e2, $startpos) }
+  | LPAREN MINUS e1 = expr e2 = expr RPAREN 
+    { EPrim2 (Minus, e1, e2, $startpos) }
+  | LPAREN TIMES e1 = expr e2 = expr RPAREN 
+    { EPrim2 (Times, e1, e2, $startpos) }
+  | LPAREN LESS e1 = expr e2 = expr RPAREN 
+    { EPrim2 (Less, e1, e2, $startpos) }
   | LPAREN IFDVD cnd = expr thn = expr els = expr RPAREN
     { EIfdvd (cnd, thn, els, $startpos) }
   | FALSE { EBool (false, $startpos) }

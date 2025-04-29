@@ -4,6 +4,7 @@ type prim2 =
   | Plus
   | Minus
   | Times
+  | Less
 
 type prim1 =
   | Print
