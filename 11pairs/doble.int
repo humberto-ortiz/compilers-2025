@@ -1,0 +1,4 @@
+(def (doble x)
+  (+ x x))
+
+(doble 4)
